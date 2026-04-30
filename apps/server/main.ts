@@ -16,9 +16,9 @@ import { ImeSessionManager } from "./runtime/ime_session_manager.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const webDistPath = path.resolve(__dirname, "../web/dist");
-const port = Number(process.env.PORT || process.env.LIME_PORT || "5000");
-const host = process.env.HOST || process.env.LIME_HOST || "127.0.0.1";
-const sharedSecret = process.env.LIME_SHARED_SECRET?.trim() || "";
+const port = Number(process.env.PORT || process.env.LLM_IME_PORT || process.env.LIME_PORT || "5000");
+const host = process.env.HOST || process.env.LLM_IME_HOST || process.env.LIME_HOST || "127.0.0.1";
+const sharedSecret = (process.env.LLM_IME_SHARED_SECRET || process.env.LIME_SHARED_SECRET)?.trim() || "";
 
 function normalizeStatus(status: number) {
   switch (status) {
@@ -198,6 +198,6 @@ app.get("*", async (c) => {
 	}
 });
 
-console.log(`LIME unified server listening on http://${host}:${port}`);
+console.log(`llm-ime server listening on http://${host}:${port}`);
 
 serve({ fetch: app.fetch, hostname: host, port });

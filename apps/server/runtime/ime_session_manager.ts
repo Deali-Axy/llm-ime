@@ -4,9 +4,9 @@ import type { Result, UserData } from "../engine.ts";
 import {
 	EngineService,
 	EngineServiceError,
-	type CommitRequest,
 } from "./engine_service.ts";
 import type {
+	CommitRequest,
 	CommitResponse,
 	EngineStatus,
 	ImeHealth,
@@ -14,6 +14,7 @@ import type {
 	InputLog,
 	LearnTextResponse,
 } from "./types.ts";
+import { ExclusiveRunner } from "../utils/exclusive_runner.ts";
 
 type SessionRecord = {
 	id: string;
@@ -21,19 +22,6 @@ type SessionRecord = {
 	updatedAt: number;
 	persistent: boolean;
 };
-
-class ExclusiveRunner {
-	private chain = Promise.resolve();
-
-	run<T>(task: () => Promise<T>) {
-		const result = this.chain.then(task, task);
-		this.chain = result.then(
-			() => undefined,
-			() => undefined,
-		);
-		return result;
-	}
-}
 
 export class ImeSessionManager {
 	static readonly defaultSessionId = "web-default";
@@ -51,7 +39,7 @@ export class ImeSessionManager {
 	}
 
 	static async create() {
-		const ttlRaw = Number(process.env.LIME_SESSION_TTL_MS ?? 15 * 60 * 1000);
+		const ttlRaw = Number(process.env.LLM_IME_SESSION_TTL_MS ?? process.env.LIME_SESSION_TTL_MS ?? 15 * 60 * 1000);
 		const sessionTtlMs = Number.isFinite(ttlRaw) && ttlRaw > 0
 			? ttlRaw
 			: 15 * 60 * 1000;
@@ -152,9 +140,9 @@ export class ImeSessionManager {
 		sessionId: string,
 		request: CommitRequest,
 	): Promise<CommitResponse> {
-		const normalizedId = this.normalizeSessionId(sessionId);
-		return this.withSession(normalizedId, async () => {
+		return this.withSession(sessionId, async () => {
 			const response = await this.service.commit(request);
+			const normalizedId = this.normalizeSessionId(sessionId);
 			const session = this.sessions.get(normalizedId);
 			if (!session) {
 				throw new EngineServiceError("输入会话不存在", 404);

@@ -37,6 +37,12 @@ export type EngineStatus = {
 	ziCount: number;
 };
 
+export type CommitRequest = {
+	text: string;
+	new?: boolean;
+	update?: boolean;
+};
+
 export type CommitResponse = {
 	message: string;
 	committedText: string | null;

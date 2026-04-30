@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import { readFileSync } from "node:fs";
 import { load_pinyin } from "./key_map/pinyin/gen_zi_pinyin.ts";
 import { keys_to_pinyin } from "./key_map/pinyin/keys_to_pinyin.ts";
-import { initLIME } from "./engine.ts";
+import { createImeEngine } from "./engine.ts";
 import type { Config } from "./utils/config.d.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -28,8 +28,8 @@ const defaultModelPath = path.join(
 );
 
 const config: Config = {
-	runner: await initLIME({
-		modelPath: process.env.LIME_MODEL_PATH || defaultModelPath,
+	runner: await createImeEngine({
+		modelPath: process.env.LLM_IME_MODEL_PATH || process.env.LIME_MODEL_PATH || defaultModelPath,
 		ziInd: load_pinyin(),
 		omitContext: true,
 	}),

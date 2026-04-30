@@ -2,51 +2,13 @@ import { readFileSync } from "node:fs";
 import type { Result, UserData } from "../engine.ts";
 import { loadRuntimeConfig } from "./load_config.ts";
 import type { Config } from "../utils/config.d.ts";
-
-export type InputLog = {
-	keyDeltaTimes: Array<number>;
-	lastKeyTime: number | null;
-	ziDeltaTimes: Array<number>;
-	lastZiTime: number | null;
-	ziCount: number;
-	lastCandidates: {
-		time: number;
-		candidates: string[];
-	};
-	offsetTimes: Record<number, Array<number>>;
-};
-
-export type CommitRequest = {
-	text: string;
-	new?: boolean;
-	update?: boolean;
-};
-
-export type CommitResponse = {
-	message: string;
-	committedText: string | null;
-};
-
-export type EngineStatus = {
-	readyAt: number;
-	userWordCount: number;
-	contextTokenCount: number;
-	lastCandidateCount: number;
-	ziCount: number;
-};
-
-class ExclusiveRunner {
-	private chain = Promise.resolve();
-
-	run<T>(task: () => Promise<T>) {
-		const result = this.chain.then(task, task);
-		this.chain = result.then(
-			() => undefined,
-			() => undefined,
-		);
-		return result;
-	}
-}
+import type {
+	CommitRequest,
+	CommitResponse,
+	EngineStatus,
+	InputLog,
+} from "./types.ts";
+import { ExclusiveRunner } from "../utils/exclusive_runner.ts";
 
 export class EngineServiceError extends Error {
 	status: number;
@@ -149,7 +111,7 @@ export class EngineService {
 			}
 
 			const pinyinInput = this.config.key2ZiInd(normalizedKeys);
-			const result = await this.config.runner.single_ci(pinyinInput);
+			const result = await this.config.runner.singleCi(pinyinInput);
 
 			if (requestId !== this.latestCandidateRequestId) {
 				return { candidates: [] };
@@ -238,7 +200,7 @@ export class EngineService {
 		this.latestCandidateRequestId++;
 		return this.queue.run(async () => {
 			this.resetTransientInputState();
-			await this.config.runner.reset_context();
+			await this.config.runner.resetContext();
 			await this.config.runner.waitForIdle();
 			return {
 				message: "上下文已重置",
@@ -250,7 +212,7 @@ export class EngineService {
 		this.latestCandidateRequestId++;
 		return this.queue.run(async () => {
 			this.resetTransientInputState();
-			await this.config.runner.reset_context();
+			await this.config.runner.resetContext();
 			for (const item of history) {
 				const text = item.text || "";
 				if (!text) continue;

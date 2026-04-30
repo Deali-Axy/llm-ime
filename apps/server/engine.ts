@@ -7,6 +7,7 @@ import {
 } from "node-llama-cpp";
 import type { ZiIndAndKey, ZiIndL } from "./key_map/zi_ind.ts";
 import { ziid_in_ziid } from "./utils/ziind_in_ziind.ts";
+import { Debounce } from "./utils/debounce.ts";
 
 type ZiIndFunc = (zici: string) => string[][];
 
@@ -71,26 +72,26 @@ export async function loadModel(op: {
 	return { model, context };
 }
 
-export async function initLIME(
+export async function createImeEngine(
 	op: Parameters<typeof loadModel>[0] & {
 		ziInd: { trans: ZiIndFunc; allSymbol: Set<string> };
 		omitContext?: boolean;
 	},
 ) {
 	const { model, context } = await loadModel(op);
-	const lime = new LIME({
+	const engine = new ImeEngine({
 		model,
 		context,
 		ziInd: op.ziInd,
 		omitContext: op.omitContext,
 	});
-	await lime.init_ctx();
-	return lime;
+	await engine.initCtx();
+	return engine;
 }
 
 type ExToken = Token | number;
 
-export class LIME {
+export class ImeEngine {
 	model: LlamaModel;
 	context: LlamaContext;
 	sequence: LlamaContextSequence;
@@ -99,13 +100,13 @@ export class LIME {
 	first_pinyin_token = new Map<string, Set<number>>();
 	unIndexedZi = new Map<string, Set<string>>();
 
-	private pre_context = "下面的内容主题多样";
-	last_context_data = { context: "" };
+	private preContext = "下面的内容主题多样";
+	lastContextData = { context: "" };
 	private userTokens = new Map<ExToken, Array<Token>>();
 	private userTokensFirstIndex = new Map<Token, Set<ExToken>>();
 	private tokenIndex = 0;
 
-	private last_result: Map<ExToken, number> | undefined;
+	private lastResult: Map<ExToken, number> | undefined;
 	/** 长句补全，记录拼音和token对 */
 	private longSentenceCache: {
 		py: ZiIndL;
@@ -119,7 +120,7 @@ export class LIME {
 
 	private max_count = 4000;
 	private rm_count = 20;
-	private omitContext = new deBounce(1000 * 10, async () => {
+	private omitContextDebounce = new Debounce(1000 * 10, async () => {
 		await this.modelEvalLock.acquire();
 		const { release } = await this.modelEvalLock.lock();
 		await this.tryOmitContext();
@@ -147,7 +148,7 @@ export class LIME {
 			64,
 			Math.floor(this.max_count * 0.2),
 		);
-		if (!omitContext) this.omitContext.cancel();
+		if (!omitContext) this.omitContextDebounce.cancel();
 
 		console.log("创建拼音索引");
 
@@ -237,16 +238,16 @@ export class LIME {
 		this.longSentenceCache = [];
 
 		if (update) {
-			if (text.startsWith(this.last_context_data.context)) {
-				new_text = text.slice(this.last_context_data.context.length);
-				this.last_context_data.context = text;
+			if (text.startsWith(this.lastContextData.context)) {
+				new_text = text.slice(this.lastContextData.context.length);
+				this.lastContextData.context = text;
 			} else {
 				new_text = text;
 				nt = true;
 			}
 		}
 		if (nt) {
-			this.last_context_data.context = "";
+			this.lastContextData.context = "";
 			if (update === false) {
 				new_text = text;
 			}
@@ -282,26 +283,26 @@ export class LIME {
 					},
 				],
 			]);
-			this.last_result = res.at(-1)?.next.probabilities; // todo 如果在自定义中某个tk值比较大，那尝试多运行一步
+			this.lastResult = res.at(-1)?.next.probabilities; // todo 如果在自定义中某个tk值比较大，那尝试多运行一步
 			// 临时
 			for (const i of this.userTokens.keys()) {
-				this.last_result?.set(i, 0);
+				this.lastResult?.set(i, 0);
 			}
 			this.lastCommitOffset = this.sequence.contextTokens.length;
 			release();
 		})();
 
-		this.omitContext.reset();
+		this.omitContextDebounce.reset();
 
 		return new_text;
 	};
 
-	reset_context = async () => {
+	resetContext = async () => {
 		await this.modelEvalLock.acquire();
-		this.last_context_data.context = "";
+		this.lastContextData.context = "";
 		this.userTokens.clear();
 		await this.sequence.clearHistory();
-		await this.init_ctx();
+		await this.initCtx();
 	};
 
 	waitForIdle = async () => {
@@ -310,7 +311,7 @@ export class LIME {
 
 	getEvalResult = async () => {
 		await this.modelEvalLock.acquire();
-		return this.last_result;
+		return this.lastResult;
 	};
 
 	exTokens = (tokens: ExToken[]) => {
@@ -352,19 +353,19 @@ export class LIME {
 			this.first_pinyin_token.set(fp, s);
 		}
 
-		if (this.last_result) {
-			this.last_result.set(token_id, 0);
+		if (this.lastResult) {
+			this.lastResult.set(token_id, 0);
 		}
 
 		return true;
 	};
 
-	single_ci = async (pinyin_input: ZiIndL): Promise<Result> => {
+	singleCi = async (pinyin_input: ZiIndL): Promise<Result> => {
 		if (pinyin_input.length === 0 || pinyin_input[0].length === 0) {
 			return { candidates: [] };
 		}
 
-		if (!this.last_result) {
+		if (!this.lastResult) {
 			return { candidates: [] };
 		}
 
@@ -442,7 +443,7 @@ export class LIME {
 
 			return new_last_result;
 		};
-		const new_last_result = filterByPinyin(pinyin_input, this.last_result);
+		const new_last_result = filterByPinyin(pinyin_input, this.lastResult);
 
 		// 首个候选补全为长句
 		await (async () => {
@@ -478,7 +479,7 @@ export class LIME {
 				const last = lc.at(-1);
 				if (last) {
 					const npy = last.py.concat(rmpyx);
-					const lastlast = lc.at(-2)?.nextResult || this.last_result;
+					const lastlast = lc.at(-2)?.nextResult || this.lastResult;
 					if (lastlast) {
 						const f = filterByPinyin(npy, lastlast);
 						const first = f.entries().next().value;
@@ -656,12 +657,12 @@ export class LIME {
 
 		c.sort((a, b) => b.pinyin.length - a.pinyin.length);
 
-		this.omitContext.reset();
+		this.omitContextDebounce.reset();
 		return { candidates: c };
 	};
 
-	init_ctx = async () => {
-		const prompt = this.pre_context;
+	initCtx = async () => {
+		const prompt = this.preContext;
 		const tokens = this.model.tokenizer(prompt);
 		const [pre, last] = [tokens.slice(0, -1), tokens.at(-1)];
 		if (last === undefined) {
@@ -681,7 +682,7 @@ export class LIME {
 				},
 			],
 		]);
-		this.last_result = x.at(-1)?.next.probabilities;
+		this.lastResult = x.at(-1)?.next.probabilities;
 		this.lastCommitOffset = this.sequence.contextTokens.length;
 	};
 
@@ -704,28 +705,4 @@ export class LIME {
 		for (const [k, v] of Object.entries(data.words))
 			this.userTokens.set(Number(k), v as Token[]);
 	};
-}
-
-class deBounce {
-	private timeout: ReturnType<typeof setTimeout> | null = null;
-	private delay: number;
-	private fun = () => {};
-	private cancelled = false;
-	constructor(delay: number, fun: () => void) {
-		this.delay = delay;
-		this.fun = fun;
-	}
-
-	reset() {
-		if (this.timeout) clearTimeout(this.timeout);
-		if (this.cancelled) return;
-		this.timeout = setTimeout(() => {
-			this.fun();
-		}, this.delay);
-	}
-
-	cancel() {
-		if (this.timeout) clearTimeout(this.timeout);
-		this.cancelled = true;
-	}
 }
