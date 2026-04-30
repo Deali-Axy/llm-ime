@@ -177,6 +177,8 @@ pnpm run server
 
 2. 如需启用本地鉴权，在 `.env` 中设置 `LIME_SHARED_SECRET`，然后同步修改 `rime\lua\llm_ime_config.lua` 中的 `shared_secret`
 
+   `rime\lua\llm_ime_config.lua` 里还提供了 `connect_timeout_seconds` 和 `request_timeout_seconds`。默认采用较短超时，目的是在服务异常或模型响应过慢时尽快失败，避免把小狼毫长时间卡住。
+
 3. 安装 RIME 配置（二选一）
 
 ```bash

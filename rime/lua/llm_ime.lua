@@ -19,6 +19,8 @@ local function call_json(path, payload)
     method = "POST",
     headers = make_headers(),
     source = json.encode(payload),
+    connect_timeout = config.connect_timeout_seconds,
+    timeout = config.request_timeout_seconds,
   })
   if code == nil then
     return nil, body or "请求失败"

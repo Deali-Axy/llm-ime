@@ -27,6 +27,20 @@ local function fetch_text(url, op)
     shell_escape(url)
   )
 
+  if op.connect_timeout then
+    command = command .. string.format(
+      " --connect-timeout %s",
+      tostring(op.connect_timeout)
+    )
+  end
+
+  if op.timeout then
+    command = command .. string.format(
+      " --max-time %s",
+      tostring(op.timeout)
+    )
+  end
+
   if op.headers then
     for key, value in pairs(op.headers) do
       command = command .. string.format(
@@ -69,6 +83,9 @@ local function fetch_text(url, op)
   os.remove(response_file)
 
   local status_code = tonumber(status_output)
+  if status_code == nil and body == "" then
+    return nil, "curl 请求失败或超时"
+  end
   return status_code, body
 end
 
