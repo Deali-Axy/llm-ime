@@ -1,3 +1,4 @@
+﻿# Keep this file saved as UTF-8 with BOM for Windows PowerShell 5.1 compatibility.
 param(
   [string]$TargetDir = "$env:APPDATA\Rime",
   [switch]$NoBackup
