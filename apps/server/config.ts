@@ -8,7 +8,7 @@ import type { Config } from "./utils/config.d.ts";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const defaultModelPath = path.join(
 	__dirname,
-	"../../../../Qwen3-0.6B-GGUF/Qwen3-0.6B-IQ4_XS.gguf",
+	"../../../Qwen3-0.6B-GGUF/Qwen3-0.6B-IQ4_XS.gguf",
 );
 
 const config: Config = {
