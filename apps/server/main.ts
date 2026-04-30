@@ -1,10 +1,14 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { readFile } from "node:fs/promises";
+import { serve } from "@hono/node-server";
+import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
-import { serveStatic } from "hono/deno";
 import { cors } from "hono/cors";
 import { HTTPException } from "hono/http-exception";
 import { logger } from "hono/logger";
+import { zValidator } from "@hono/zod-validator";
+import { z } from "zod";
 import {
 	EngineService,
 	EngineServiceError,
@@ -12,7 +16,7 @@ import {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const webDistPath = path.resolve(__dirname, "../web/dist");
-const port = Number(Deno.env.get("PORT") || Deno.env.get("LIME_PORT") || "5000");
+const port = Number(process.env.PORT || process.env.LIME_PORT || "5000");
 
 function normalizeStatus(status: number) {
   switch (status) {
@@ -60,25 +64,31 @@ app.get("/api/status", async (c) => {
 	return c.json(await service.status());
 });
 
-app.post("/api/candidates", async (c) => {
-	const body = await c.req.json<{ keys?: string }>();
-	return c.json(await service.candidates(body.keys || ""));
-});
+app.post(
+	"/api/candidates",
+	zValidator("json", z.object({ keys: z.string() })),
+	async (c) => {
+		const { keys } = c.req.valid("json");
+		return c.json(await service.candidates(keys));
+	},
+);
 
-app.post("/api/commit", async (c) => {
-	const body = await c.req.json<{
-		text?: string;
-		new?: boolean;
-		update?: boolean;
-	}>();
-	return c.json(
-		await service.commit({
-			text: body.text || "",
+app.post(
+	"/api/commit",
+	zValidator("json", z.object({
+		text: z.string(),
+		new: z.boolean().optional(),
+		update: z.boolean().optional(),
+	})),
+	async (c) => {
+		const body = c.req.valid("json");
+		return c.json(await service.commit({
+			text: body.text,
 			new: body.new,
 			update: body.update,
-		}),
-	);
-});
+		}));
+	},
+);
 
 app.get("/api/userdata", async (c) => {
 	return c.json(await service.userData());
@@ -88,15 +98,22 @@ app.get("/api/inputlog", async (c) => {
 	return c.json(await service.inputLogSnapshot());
 });
 
-app.post("/api/learntext", async (c) => {
-	return c.json(await service.learnText(await c.req.text()));
-});
+app.post(
+	"/api/learntext",
+	zValidator("json", z.object({ text: z.string() })),
+	async (c) => {
+		const { text } = c.req.valid("json");
+		return c.json(await service.learnText(text));
+	},
+);
 
-app.use("/assets/*", serveStatic({ root: webDistPath }));
+const webDistRel = path.relative(process.cwd(), webDistPath);
+app.use("/assets/*", serveStatic({ root: webDistRel }));
 
 app.get("*", async (c) => {
 	try {
-		return c.html(await Deno.readTextFile(path.join(webDistPath, "index.html")));
+		const html = await readFile(path.join(webDistPath, "index.html"), "utf-8");
+		return c.html(html);
 	} catch {
 		return c.text(
 			"Web UI not built. Run `pnpm --filter web build` in llm-ime first.",
@@ -107,4 +124,4 @@ app.get("*", async (c) => {
 
 console.log(`LIME unified server listening on http://127.0.0.1:${port}`);
 
-Deno.serve({ port }, app.fetch);
+serve({ fetch: app.fetch, port });

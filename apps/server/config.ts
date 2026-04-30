@@ -13,7 +13,7 @@ const defaultModelPath = path.join(
 
 const config: Config = {
 	runner: await initLIME({
-		modelPath: Deno.env.get("LIME_MODEL_PATH") || defaultModelPath,
+		modelPath: process.env.LIME_MODEL_PATH || defaultModelPath,
 		ziInd: load_pinyin(),
 		omitContext: true,
 	}),

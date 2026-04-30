@@ -1,110 +1,43 @@
-export type Candidate = {
-  word: string
-  score: number
-  pinyin: string[]
-  remainkeys: string[]
-  preedit: string
-  consumedkeys: number
-}
+import { hc } from "hono/client";
+import type { AppType } from "@workspace/server/api-type";
 
-export type CandidatesResponse = {
-  candidates: Candidate[]
-}
+export type {
+  Candidate,
+  CandidatesResult,
+  CommitResponse,
+  EngineStatus,
+  InputLog,
+  LearnTextResponse,
+  UserData,
+} from "@workspace/server/api-type";
 
-export type UserData = {
-  words: Record<number, Array<number>>
-  context: Array<{ t: string; token: number }>
-}
-
-export type InputLog = {
-  keyDeltaTimes: number[]
-  lastKeyTime: number | null
-  ziDeltaTimes: number[]
-  lastZiTime: number | null
-  ziCount: number
-  lastCandidates: {
-    time: number
-    candidates: string[]
-  }
-  offsetTimes: Record<number, number[]>
-}
-
-export type EngineStatus = {
-  readyAt: number
-  userWordCount: number
-  contextTokenCount: number
-  lastCandidateCount: number
-  ziCount: number
-}
-
-type MessageResponse = {
-  message: string
-}
-
-type CommitResponse = MessageResponse & {
-  committedText: string | null
-}
-
-const apiBaseUrl =
-  (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, "") ||
-  ""
-
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${apiBaseUrl}/api${path}`, init)
-
-  if (!response.ok) {
-    const text = await response.text()
-
-    try {
-      const json = JSON.parse(text) as { error?: string }
-      throw new Error(json.error || `Request failed: ${response.status}`)
-    } catch {
-      throw new Error(text || `Request failed: ${response.status}`)
-    }
-  }
-
-  return (await response.json()) as T
-}
+const client = hc<AppType>("/");
 
 export const api = {
+  status() {
+    return client.api.status.$get().then((r) => r.json());
+  },
   candidates(keys: string) {
-    return request<CandidatesResponse>("/candidates", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ keys }),
-    })
+    return client.api.candidates.$post({ json: { keys } }).then((r) => r.json());
   },
   commit(payload: { text: string; isNew?: boolean; update?: boolean }) {
-    return request<CommitResponse>("/commit", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        text: payload.text,
-        new: payload.isNew,
-        update: payload.update,
-      }),
-    })
+    return client.api.commit
+      .$post({
+        json: {
+          text: payload.text,
+          new: payload.isNew,
+          update: payload.update,
+        },
+      })
+      .then((r) => r.json());
   },
   userData() {
-    return request<UserData>("/userdata")
+    return client.api.userdata.$get().then((r) => r.json());
   },
   inputLog() {
-    return request<InputLog>("/inputlog")
+    return client.api.inputlog.$get().then((r) => r.json());
   },
   learnText(text: string) {
-    return request<MessageResponse>("/learntext", {
-      method: "POST",
-      headers: {
-        "Content-Type": "text/plain;charset=UTF-8",
-      },
-      body: text,
-    })
+    return client.api.learntext.$post({ json: { text } }).then((r) => r.json());
   },
-  status() {
-    return request<EngineStatus>("/status")
-  },
-}
+};

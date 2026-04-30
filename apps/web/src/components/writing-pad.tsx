@@ -16,6 +16,7 @@ import { cn } from "@workspace/ui/lib/utils"
 import { api, type Candidate } from "@/lib/api.ts"
 
 const PAGE_SIZE = 5
+const DEBOUNCE_MS = 150
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error)
@@ -30,6 +31,7 @@ export function WritingPad() {
   const requestSequenceRef = useRef(0)
   const draftTextRef = useRef("")
   const composingKeysRef = useRef("")
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const [committedText, setCommittedText] = useState("")
   const [draftText, setDraftText] = useState("")
@@ -45,10 +47,6 @@ export function WritingPad() {
   }, [draftText])
 
   useEffect(() => {
-    composingKeysRef.current = composingKeys
-  }, [composingKeys])
-
-  useEffect(() => {
     editorRef.current?.focus()
   }, [])
 
@@ -59,39 +57,64 @@ export function WritingPad() {
     }
   }, [committedText, draftText, composingKeys, candidates])
 
-  const refreshCandidates = useCallback(async (nextKeys: string) => {
-    const sequence = ++requestSequenceRef.current
-
-    setComposingKeys(nextKeys)
-    setPageIndex(0)
-    setError(null)
-
-    if (!nextKeys) {
-      setCandidates([])
-      setIsLoading(false)
-      return
-    }
-
-    setIsLoading(true)
-
+  /**
+   * Fetch candidates for the given key sequence. Uses sequence numbers to
+   * discard stale responses when a newer request has already been issued.
+   */
+  const fetchCandidates = useCallback(async (keys: string, sequence: number) => {
     try {
-      const result = await api.candidates(nextKeys)
-      if (sequence !== requestSequenceRef.current) {
-        return
-      }
+      const result = await api.candidates(keys)
+      if (sequence !== requestSequenceRef.current) return
       setCandidates(result.candidates)
-    } catch (requestError) {
-      if (sequence !== requestSequenceRef.current) {
-        return
-      }
+      setError(null)
+    } catch (err) {
+      if (sequence !== requestSequenceRef.current) return
       setCandidates([])
-      setError(getErrorMessage(requestError))
+      setError(getErrorMessage(err))
     } finally {
       if (sequence === requestSequenceRef.current) {
         setIsLoading(false)
       }
     }
   }, [])
+
+  /**
+   * Update composing keys immediately (for responsive display), then schedule
+   * an API call after DEBOUNCE_MS. Older pending calls are cancelled so fast
+   * typing only triggers one network request.
+   */
+  const refreshCandidates = useCallback(
+    (nextKeys: string) => {
+      // Update ref synchronously so the next handleKeyDown sees the latest value
+      composingKeysRef.current = nextKeys
+      setComposingKeys(nextKeys)
+      setPageIndex(0)
+      setError(null)
+
+      // Cancel any pending debounced request
+      if (debounceTimerRef.current !== null) {
+        clearTimeout(debounceTimerRef.current)
+        debounceTimerRef.current = null
+      }
+
+      if (!nextKeys) {
+        setCandidates([])
+        setIsLoading(false)
+        requestSequenceRef.current++
+        return
+      }
+
+      // Show loading immediately, but debounce the actual API call
+      setIsLoading(true)
+      const sequence = ++requestSequenceRef.current
+
+      debounceTimerRef.current = setTimeout(() => {
+        debounceTimerRef.current = null
+        void fetchCandidates(nextKeys, sequence)
+      }, DEBOUNCE_MS)
+    },
+    [fetchCandidates],
+  )
 
   const finalizeDraft = useCallback(
     async (suffix = "") => {
@@ -107,7 +130,7 @@ export function WritingPad() {
 
         setCommittedText((current) => `${current}${currentDraft}${suffix}`)
         setDraftText("")
-        await refreshCandidates("")
+        refreshCandidates("")
       } catch (commitError) {
         setError(getErrorMessage(commitError))
       } finally {
@@ -136,7 +159,7 @@ export function WritingPad() {
           })
 
           const nextKeys = composingKeysRef.current.slice(candidate.consumedkeys)
-          await refreshCandidates(nextKeys)
+          refreshCandidates(nextKeys)
           return
         }
 
@@ -147,7 +170,7 @@ export function WritingPad() {
 
         setCommittedText((current) => `${current}${nextDraft}`)
         setDraftText("")
-        await refreshCandidates("")
+        refreshCandidates("")
       } catch (commitError) {
         setError(getErrorMessage(commitError))
       } finally {
@@ -158,7 +181,12 @@ export function WritingPad() {
   )
 
   const clearComposition = useCallback(() => {
-    requestSequenceRef.current += 1
+    if (debounceTimerRef.current !== null) {
+      clearTimeout(debounceTimerRef.current)
+      debounceTimerRef.current = null
+    }
+    requestSequenceRef.current++
+    composingKeysRef.current = ""
     setDraftText("")
     setCandidates([])
     setComposingKeys("")
@@ -237,7 +265,7 @@ export function WritingPad() {
 
       if (key === "Backspace") {
         if (composingKeysRef.current.length > 0) {
-          void refreshCandidates(removeLastChar(composingKeysRef.current))
+          refreshCandidates(removeLastChar(composingKeysRef.current))
           return
         }
 
@@ -287,7 +315,7 @@ export function WritingPad() {
       }
 
       if (isLetter || isSplitKey) {
-        void refreshCandidates(`${composingKeysRef.current}${lowerKey}`)
+        refreshCandidates(`${composingKeysRef.current}${lowerKey}`)
       }
     },
     [

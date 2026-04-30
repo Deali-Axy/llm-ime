@@ -10,9 +10,8 @@
     "typecheck": "turbo typecheck",
     "web:dev": "pnpm --filter web dev",
     "web:build": "pnpm --filter web build",
-    "server": "deno run -A -c apps/server/deno.json apps/server/main.ts",
-    "server:check": "deno check -c apps/server/deno.json apps/server/main.ts",
-    "server:cache": "deno cache -c apps/server/deno.json --node-modules-dir=auto --allow-scripts=npm:node-llama-cpp apps/server/main.ts"
+    "server": "pnpm --filter @workspace/server start",
+    "server:dev": "pnpm --filter @workspace/server dev"
   },
   "devDependencies": {
     "prettier": "^3.8.1",

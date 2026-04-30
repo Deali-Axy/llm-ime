@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import type { Result, UserData } from "../engine.ts";
 import { loadRuntimeConfig } from "./load_config.ts";
 import type { Config } from "../utils/config.d.ts";
@@ -100,16 +101,13 @@ export class EngineService {
 
 	private async loadUserWords() {
 		try {
-			const words = Deno.readTextFileSync(this.config.userWordsPath)
+			const words = readFileSync(this.config.userWordsPath, "utf-8")
 				.split("\n")
 				.filter((w) => w.trim());
-			const textEncoder = new TextEncoder();
 			for (const [i, w] of words.entries()) {
 				this.config.runner.addUserWord(w);
-				Deno.stdout.writeSync(
-					textEncoder.encode(
-						`加载用户词 ${(((i + 1) / words.length) * 100).toFixed(2)}%\r`,
-					),
+				process.stdout.write(
+					`加载用户词 ${(((i + 1) / words.length) * 100).toFixed(2)}%\r`,
 				);
 			}
 			console.log(`\n加载用户词完成，数量 ${words.length}`);
