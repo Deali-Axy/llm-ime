@@ -578,7 +578,6 @@ export class LIME {
 			for (let _i = 0; _i < Math.min(l, 4); _i++) {
 				const next = this.longSentenceCache.at(-1)?.nextResult;
 				if (!next) {
-					console.log("no next");
 					break;
 				}
 				const f = filterByPinyin(rmpyx, next);
@@ -654,10 +653,6 @@ export class LIME {
 		c.sort((a, b) => b.pinyin.length - a.pinyin.length);
 
 		this.omitContext.reset();
-
-		if (c.length === 0) {
-			console.log("is empty");
-		}
 		return { candidates: c };
 	};
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react"
 import { CopyIcon, EraserIcon, LoaderCircleIcon } from "lucide-react"
 
 import { Badge } from "@workspace/ui/components/badge"
@@ -16,7 +16,7 @@ import { cn } from "@workspace/ui/lib/utils"
 import { api, type Candidate } from "@/lib/api.ts"
 
 const PAGE_SIZE = 5
-const DEBOUNCE_MS = 150
+const DEBOUNCE_MS = 250
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error)
@@ -32,6 +32,7 @@ export function WritingPad() {
   const draftTextRef = useRef("")
   const composingKeysRef = useRef("")
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const inFlightCandidatesAbortRef = useRef<AbortController | null>(null)
 
   const [committedText, setCommittedText] = useState("")
   const [draftText, setDraftText] = useState("")
@@ -41,6 +42,7 @@ export function WritingPad() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [copyLabel, setCopyLabel] = useState("复制")
+  const [isPending, startTransition] = useTransition()
 
   useEffect(() => {
     draftTextRef.current = draftText
@@ -51,32 +53,51 @@ export function WritingPad() {
   }, [])
 
   useEffect(() => {
+    return () => {
+      if (debounceTimerRef.current !== null) {
+        clearTimeout(debounceTimerRef.current)
+      }
+      inFlightCandidatesAbortRef.current?.abort()
+    }
+  }, [])
+
+  useEffect(() => {
     const editor = editorRef.current
     if (editor) {
       editor.scrollTop = editor.scrollHeight
     }
-  }, [committedText, draftText, composingKeys, candidates])
+  }, [committedText, draftText, composingKeys])
 
   /**
    * Fetch candidates for the given key sequence. Uses sequence numbers to
    * discard stale responses when a newer request has already been issued.
    */
-  const fetchCandidates = useCallback(async (keys: string, sequence: number) => {
-    try {
-      const result = await api.candidates(keys)
-      if (sequence !== requestSequenceRef.current) return
-      setCandidates(result.candidates)
-      setError(null)
-    } catch (err) {
-      if (sequence !== requestSequenceRef.current) return
-      setCandidates([])
-      setError(getErrorMessage(err))
-    } finally {
-      if (sequence === requestSequenceRef.current) {
-        setIsLoading(false)
+  const fetchCandidates = useCallback(
+    async (keys: string, sequence: number, controller: AbortController) => {
+      try {
+        const result = await api.candidates(keys, controller.signal)
+        if (sequence !== requestSequenceRef.current) return
+        startTransition(() => {
+          setCandidates(result.candidates)
+          setError(null)
+          setIsLoading(false)
+        })
+      } catch (err) {
+        if (controller.signal.aborted) return
+        if (sequence !== requestSequenceRef.current) return
+        startTransition(() => {
+          setCandidates([])
+          setError(getErrorMessage(err))
+          setIsLoading(false)
+        })
+      } finally {
+        if (inFlightCandidatesAbortRef.current === controller) {
+          inFlightCandidatesAbortRef.current = null
+        }
       }
-    }
-  }, [])
+    },
+    [startTransition],
+  )
 
   /**
    * Update composing keys immediately (for responsive display), then schedule
@@ -96,6 +117,8 @@ export function WritingPad() {
         clearTimeout(debounceTimerRef.current)
         debounceTimerRef.current = null
       }
+      inFlightCandidatesAbortRef.current?.abort()
+      inFlightCandidatesAbortRef.current = null
 
       if (!nextKeys) {
         setCandidates([])
@@ -110,7 +133,9 @@ export function WritingPad() {
 
       debounceTimerRef.current = setTimeout(() => {
         debounceTimerRef.current = null
-        void fetchCandidates(nextKeys, sequence)
+        const controller = new AbortController()
+        inFlightCandidatesAbortRef.current = controller
+        void fetchCandidates(nextKeys, sequence, controller)
       }, DEBOUNCE_MS)
     },
     [fetchCandidates],
@@ -175,6 +200,8 @@ export function WritingPad() {
       debounceTimerRef.current = null
     }
     requestSequenceRef.current++
+    inFlightCandidatesAbortRef.current?.abort()
+    inFlightCandidatesAbortRef.current = null
     composingKeysRef.current = ""
     setDraftText("")
     setCandidates([])
@@ -332,7 +359,7 @@ export function WritingPad() {
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="secondary">{characterCount} 字</Badge>
             <Badge variant="secondary">{isComposing ? "输入中" : "待命"}</Badge>
-            {isLoading ? (
+            {isLoading || isPending ? (
               <Badge variant="secondary" className="gap-1">
                 <LoaderCircleIcon className="size-3.5 animate-spin" />
                 查询中

@@ -87,6 +87,7 @@ export class EngineService {
 	private queue = new ExclusiveRunner();
 	private inputLog: InputLog = createInputLog();
 	private readonly readyAt = Date.now();
+	private latestCandidateRequestId = 0;
 
 	private constructor(config: Config) {
 		this.config = config;
@@ -117,9 +118,13 @@ export class EngineService {
 	}
 
 	async candidates(keys: string): Promise<Result> {
+		const requestId = ++this.latestCandidateRequestId;
 		return this.queue.run(async () => {
+			if (requestId !== this.latestCandidateRequestId) {
+				return { candidates: [] };
+			}
+
 			const normalizedKeys = keys || "";
-			console.log(normalizedKeys);
 
 			const time = Date.now();
 			if (this.inputLog.lastKeyTime === null || normalizedKeys.length === 1) {
@@ -137,6 +142,10 @@ export class EngineService {
 			const pinyinInput = this.config.key2ZiInd(normalizedKeys);
 			const result = await this.config.runner.single_ci(pinyinInput);
 
+			if (requestId !== this.latestCandidateRequestId) {
+				return { candidates: [] };
+			}
+
 			if (result.candidates.length <= 1) {
 				this.inputLog.lastZiTime = null;
 			} else {
@@ -153,6 +162,7 @@ export class EngineService {
 	}
 
 	async commit(request: CommitRequest): Promise<CommitResponse> {
+		this.latestCandidateRequestId++;
 		return this.queue.run(async () => {
 			const text = request.text || "";
 			const isNew = request.new ?? true;
