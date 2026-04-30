@@ -389,7 +389,7 @@ export function WritingPad() {
                 : "聚焦上面的写字板后即可开始输入。"}
             </div>
           ) : (
-            <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+            <div className="grid gap-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
               {visibleCandidates.map((candidate, index) => {
                 const displayIndex = pageIndex * PAGE_SIZE + index
 
