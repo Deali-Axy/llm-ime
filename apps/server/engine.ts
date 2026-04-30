@@ -30,21 +30,22 @@ export type UserData = {
 };
 
 class Lock {
-	private pm: Promise<void> | null = null;
+	private tail: Promise<void> = Promise.resolve();
 
 	async acquire() {
-		if (this.pm) await this.pm;
+		await this.tail;
 	}
 
 	async lock() {
-		await this.acquire();
-		const p = Promise.withResolvers<void>();
-		this.pm = p.promise;
-
+		const prevTail = this.tail;
+		let releaseFn: () => void;
+		const ticket = new Promise<void>((resolve) => {
+			releaseFn = resolve;
+		});
+		this.tail = prevTail.then(() => ticket);
+		await prevTail;
 		return {
-			release: () => {
-				p.resolve();
-			},
+			release: () => releaseFn(),
 		};
 	}
 }
@@ -55,9 +56,8 @@ export async function loadModel(op: {
 }) {
 	const modelPath = op.modelPath;
 
-	const llama = await getLlama({
-		gpu: false,
-	});
+	const gpuSetting = process.env.LLM_IME_GPU === "false" ? false : "auto";
+	const llama = await getLlama({ gpu: gpuSetting });
 
 	console.log("加载模型", modelPath);
 
@@ -121,10 +121,12 @@ export class ImeEngine {
 	private max_count = 4000;
 	private rm_count = 20;
 	private omitContextDebounce = new Debounce(1000 * 10, async () => {
-		await this.modelEvalLock.acquire();
 		const { release } = await this.modelEvalLock.lock();
-		await this.tryOmitContext();
-		release();
+		try {
+			await this.tryOmitContext();
+		} finally {
+			release();
+		}
 	});
 
 	constructor({
@@ -261,35 +263,36 @@ export class ImeEngine {
 
 		const pre = to_run.slice(0, -1);
 		const last = to_run[to_run.length - 1];
-		const { release } = await this.modelEvalLock.lock();
-		// 强制commit耗时的部分为异步执行，避免请求阻塞
+		// 锁获取移入异步 IIFE，使 HTTP 响应立即返回
 		(async () => {
-			await this.tryOmitContext(pre.length + 1);
-			// todo 根据缓存判断，比如长句实际上已经近似提交了
-			await this.sequence.eraseContextTokenRanges([
-				{
-					start: this.lastCommitOffset,
-					end: this.sequence.contextTokens.length,
-				},
-			]);
-			const res = await this.sequence.controlledEvaluate([
-				...pre,
-				[
-					last,
+			const { release } = await this.modelEvalLock.lock();
+			try {
+				await this.tryOmitContext(pre.length + 1);
+				await this.sequence.eraseContextTokenRanges([
 					{
-						generateNext: {
-							probabilities: true,
-						},
+						start: this.lastCommitOffset,
+						end: this.sequence.contextTokens.length,
 					},
-				],
-			]);
-			this.lastResult = res.at(-1)?.next.probabilities; // todo 如果在自定义中某个tk值比较大，那尝试多运行一步
-			// 临时
-			for (const i of this.userTokens.keys()) {
-				this.lastResult?.set(i, 0);
+				]);
+				const res = await this.sequence.controlledEvaluate([
+					...pre,
+					[
+						last,
+						{
+							generateNext: {
+								probabilities: true,
+							},
+						},
+					],
+				]);
+				this.lastResult = res.at(-1)?.next.probabilities;
+				for (const i of this.userTokens.keys()) {
+					this.lastResult?.set(i, 0);
+				}
+				this.lastCommitOffset = this.sequence.contextTokens.length;
+			} finally {
+				release();
 			}
-			this.lastCommitOffset = this.sequence.contextTokens.length;
-			release();
 		})();
 
 		this.omitContextDebounce.reset();
@@ -298,20 +301,29 @@ export class ImeEngine {
 	};
 
 	resetContext = async () => {
-		await this.modelEvalLock.acquire();
-		this.lastContextData.context = "";
-		this.userTokens.clear();
-		await this.sequence.clearHistory();
-		await this.initCtx();
+		const { release } = await this.modelEvalLock.lock();
+		try {
+			this.lastContextData.context = "";
+			this.userTokens.clear();
+			await this.sequence.clearHistory();
+			await this.initCtx();
+		} finally {
+			release();
+		}
 	};
 
 	waitForIdle = async () => {
-		await this.modelEvalLock.acquire();
+		const { release } = await this.modelEvalLock.lock();
+		release();
 	};
 
 	getEvalResult = async () => {
-		await this.modelEvalLock.acquire();
-		return this.lastResult;
+		const { release } = await this.modelEvalLock.lock();
+		try {
+			return this.lastResult;
+		} finally {
+			release();
+		}
 	};
 
 	exTokens = (tokens: ExToken[]) => {
@@ -371,7 +383,8 @@ export class ImeEngine {
 
 		const c: Candidate[] = [];
 
-		await this.modelEvalLock.acquire();
+		const { release: releaseEval } = await this.modelEvalLock.lock();
+		try {
 		await this.tryOmitContext();
 
 		const filterByPinyin = (
@@ -580,7 +593,7 @@ export class ImeEngine {
 
 			await this.tryOmitContext(l);
 
-			for (let _i = 0; _i < Math.min(l, 4); _i++) {
+			for (let _i = 0; _i < Math.min(l, 2); _i++) {
 				const next = this.longSentenceCache.at(-1)?.nextResult;
 				if (!next) {
 					break;
@@ -658,6 +671,9 @@ export class ImeEngine {
 		c.sort((a, b) => b.pinyin.length - a.pinyin.length);
 
 		this.omitContextDebounce.reset();
+		} finally {
+			releaseEval();
+		}
 		return { candidates: c };
 	};
 

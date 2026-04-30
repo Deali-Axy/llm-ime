@@ -16,7 +16,7 @@ import { cn } from "@workspace/ui/lib/utils"
 import { api, type Candidate } from "@/lib/api.ts"
 
 const PAGE_SIZE = 5
-const DEBOUNCE_MS = 250
+const DEBOUNCE_MS = 100
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error)

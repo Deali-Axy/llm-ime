@@ -8,7 +8,6 @@ import type {
 	EngineStatus,
 	InputLog,
 } from "./types.ts";
-import { ExclusiveRunner } from "../utils/exclusive_runner.ts";
 
 export class EngineServiceError extends Error {
 	status: number;
@@ -46,7 +45,6 @@ function createInputLog(): InputLog {
 
 export class EngineService {
 	private config: Config;
-	private queue = new ExclusiveRunner();
 	private inputLog: InputLog = createInputLog();
 	private readonly readyAt = Date.now();
 	private latestCandidateRequestId = 0;
@@ -90,167 +88,149 @@ export class EngineService {
 
 	async candidates(keys: string): Promise<Result> {
 		const requestId = ++this.latestCandidateRequestId;
-		return this.queue.run(async () => {
-			if (requestId !== this.latestCandidateRequestId) {
-				return { candidates: [] };
-			}
+		const normalizedKeys = keys || "";
 
-			const normalizedKeys = keys || "";
+		const time = Date.now();
+		if (this.inputLog.lastKeyTime === null || normalizedKeys.length === 1) {
+			this.inputLog.lastKeyTime = time;
+			this.inputLog.lastZiTime = time;
+		} else {
+			arrayLimitPush(
+				this.inputLog.keyDeltaTimes,
+				time - this.inputLog.lastKeyTime,
+				inputLogMaxLen,
+			);
+			this.inputLog.lastKeyTime = time;
+		}
 
-			const time = Date.now();
-			if (this.inputLog.lastKeyTime === null || normalizedKeys.length === 1) {
-				this.inputLog.lastKeyTime = time;
-				this.inputLog.lastZiTime = time;
-			} else {
-				arrayLimitPush(
-					this.inputLog.keyDeltaTimes,
-					time - this.inputLog.lastKeyTime,
-					inputLogMaxLen,
-				);
-				this.inputLog.lastKeyTime = time;
-			}
+		const pinyinInput = this.config.key2ZiInd(normalizedKeys);
+		const result = await this.config.runner.singleCi(pinyinInput);
 
-			const pinyinInput = this.config.key2ZiInd(normalizedKeys);
-			const result = await this.config.runner.singleCi(pinyinInput);
+		if (requestId !== this.latestCandidateRequestId) {
+			return { candidates: [] };
+		}
 
-			if (requestId !== this.latestCandidateRequestId) {
-				return { candidates: [] };
-			}
+		if (result.candidates.length <= 1) {
+			this.inputLog.lastZiTime = null;
+		} else {
+			this.inputLog.lastCandidates = {
+				time,
+				candidates: result.candidates.map(
+					(candidate: { word: string }) => candidate.word,
+				),
+			};
+		}
 
-			if (result.candidates.length <= 1) {
-				this.inputLog.lastZiTime = null;
-			} else {
-				this.inputLog.lastCandidates = {
-					time,
-					candidates: result.candidates.map(
-						(candidate: { word: string }) => candidate.word,
-					),
-				};
-			}
-
-			return result;
-		});
+		return result;
 	}
 
 	async commit(request: CommitRequest): Promise<CommitResponse> {
 		this.latestCandidateRequestId++;
-		return this.queue.run(async () => {
-			const text = request.text || "";
-			const isNew = request.new ?? true;
-			const shouldUpdate = request.update ?? false;
+		const text = request.text || "";
+		const isNew = request.new ?? true;
+		const shouldUpdate = request.update ?? false;
 
-			if (!text) {
-				throw new EngineServiceError("未提供文本内容", 400);
-			}
+		if (!text) {
+			throw new EngineServiceError("未提供文本内容", 400);
+		}
 
-			const committedText = (await this.config.runner.commit(
-				text,
-				shouldUpdate,
-				isNew,
-			)) ?? null;
+		const committedText = (await this.config.runner.commit(
+			text,
+			shouldUpdate,
+			isNew,
+		)) ?? null;
 
-			if (isNew) {
-				if (this.inputLog.lastZiTime !== null) {
-					arrayLimitPush(
-						this.inputLog.ziDeltaTimes,
-						(Date.now() - this.inputLog.lastZiTime) / text.length,
-						inputLogMaxLen,
-					);
-				}
-				this.inputLog.lastZiTime = null;
-				this.inputLog.lastKeyTime = null;
-				this.inputLog.ziCount += text.length;
-			}
-
-			const offset = this.inputLog.lastCandidates.candidates.indexOf(
-				committedText ?? "",
-			);
-			if (offset !== -1 && this.inputLog.lastCandidates.time !== 0) {
-				const time = Date.now();
-				const offsets = this.inputLog.offsetTimes[offset] || [];
+		if (isNew) {
+			if (this.inputLog.lastZiTime !== null) {
 				arrayLimitPush(
-					offsets,
-					time - this.inputLog.lastCandidates.time,
+					this.inputLog.ziDeltaTimes,
+					(Date.now() - this.inputLog.lastZiTime) / text.length,
 					inputLogMaxLen,
 				);
-				this.inputLog.offsetTimes[offset] = offsets;
 			}
-			this.inputLog.lastCandidates = {
-				time: 0,
-				candidates: [],
-			};
+			this.inputLog.lastZiTime = null;
+			this.inputLog.lastKeyTime = null;
+			this.inputLog.ziCount += text.length;
+		}
 
-			return {
-				message: "文本提交成功",
-				committedText,
-			};
-		});
+		const offset = this.inputLog.lastCandidates.candidates.indexOf(
+			committedText ?? "",
+		);
+		if (offset !== -1 && this.inputLog.lastCandidates.time !== 0) {
+			const time = Date.now();
+			const offsets = this.inputLog.offsetTimes[offset] || [];
+			arrayLimitPush(
+				offsets,
+				time - this.inputLog.lastCandidates.time,
+				inputLogMaxLen,
+			);
+			this.inputLog.offsetTimes[offset] = offsets;
+		}
+		this.inputLog.lastCandidates = {
+			time: 0,
+			candidates: [],
+		};
+
+		return {
+			message: "文本提交成功",
+			committedText,
+		};
 	}
 
 	async learnText(text: string) {
-		return this.queue.run(async () => {
-			await this.config.runner.commit(text, true, true);
-			return {
-				message: "文本提交成功",
-			};
-		});
+		await this.config.runner.commit(text, true, true);
+		return {
+			message: "文本提交成功",
+		};
 	}
 
 	async resetContext() {
 		this.latestCandidateRequestId++;
-		return this.queue.run(async () => {
-			this.resetTransientInputState();
-			await this.config.runner.resetContext();
-			await this.config.runner.waitForIdle();
-			return {
-				message: "上下文已重置",
-			};
-		});
+		this.resetTransientInputState();
+		await this.config.runner.resetContext();
+		await this.config.runner.waitForIdle();
+		return {
+			message: "上下文已重置",
+		};
 	}
 
 	async restoreHistory(history: CommitRequest[]) {
 		this.latestCandidateRequestId++;
-		return this.queue.run(async () => {
-			this.resetTransientInputState();
-			await this.config.runner.resetContext();
-			for (const item of history) {
-				const text = item.text || "";
-				if (!text) continue;
-				await this.config.runner.commit(
-					text,
-					item.update ?? false,
-					item.new ?? true,
-				);
-			}
-			await this.config.runner.waitForIdle();
-			return {
-				message: "上下文已恢复",
-			};
-		});
+		this.resetTransientInputState();
+		await this.config.runner.resetContext();
+		for (const item of history) {
+			const text = item.text || "";
+			if (!text) continue;
+			await this.config.runner.commit(
+				text,
+				item.update ?? false,
+				item.new ?? true,
+			);
+		}
+		await this.config.runner.waitForIdle();
+		return {
+			message: "上下文已恢复",
+		};
 	}
 
 	async userData(): Promise<UserData> {
-		return this.queue.run(async () => {
-			return this.config.runner.getUserData();
-		});
+		await this.config.runner.waitForIdle();
+		return this.config.runner.getUserData();
 	}
 
 	async inputLogSnapshot(): Promise<InputLog> {
-		return this.queue.run(async () => {
-			return structuredClone(this.inputLog);
-		});
+		return structuredClone(this.inputLog);
 	}
 
 	async status(): Promise<EngineStatus> {
-		return this.queue.run(async () => {
-			const userData = this.config.runner.getUserData();
-			return {
-				readyAt: this.readyAt,
-				userWordCount: Object.keys(userData.words).length,
-				contextTokenCount: userData.context.length,
-				lastCandidateCount: this.inputLog.lastCandidates.candidates.length,
-				ziCount: this.inputLog.ziCount,
-			};
-		});
+		await this.config.runner.waitForIdle();
+		const userData = this.config.runner.getUserData();
+		return {
+			readyAt: this.readyAt,
+			userWordCount: Object.keys(userData.words).length,
+			contextTokenCount: userData.context.length,
+			lastCandidateCount: this.inputLog.lastCandidates.candidates.length,
+			ziCount: this.inputLog.ziCount,
+		};
 	}
 }
