@@ -44,7 +44,7 @@ if (-not $NoBackup) {
   }
 }
 
-// 清空目标目录，确保新配置替换旧配置
+# 清空目标目录，确保新配置替换旧配置
 Clear-DirectoryContents -Path $TargetDir
 Copy-Item -Path (Join-Path $sourceDir "*") -Destination $TargetDir -Recurse -Force
 
