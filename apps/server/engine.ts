@@ -1,5 +1,3 @@
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import {
 	getLlama,
 	type LlamaContext,
@@ -30,8 +28,6 @@ export type UserData = {
 	context: Array<{ t: string; token: Token }>;
 };
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
 class Lock {
 	private pm: Promise<void> | null = null;
 
@@ -52,13 +48,11 @@ class Lock {
 	}
 }
 
-export async function loadModel(op?: {
-	modelPath?: string;
+export async function loadModel(op: {
+	modelPath: string;
 	contextSize?: number;
 }) {
-	const modelPath =
-		op?.modelPath ??
-		path.join(__dirname, "../Qwen3-0.6B-GGUF/Qwen3-0.6B-IQ4_XS.gguf");
+	const modelPath = op.modelPath;
 
 	const llama = await getLlama({
 		gpu: false,
@@ -70,7 +64,7 @@ export async function loadModel(op?: {
 		modelPath: modelPath,
 	});
 	const context = await model.createContext({
-		contextSize: { max: op?.contextSize ?? 4096 },
+		contextSize: { max: op.contextSize ?? 4096 },
 	});
 	console.log("加载完成");
 
