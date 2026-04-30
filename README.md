@@ -1,21 +1,74 @@
-# shadcn/ui monorepo template
+# llm-ime
 
-This is a Vite monorepo template with shadcn/ui.
+基于 **React + Vite + TanStack Router + Tailwind + shadcn/ui** 的新一代 LIME 前端，以及合并后的 **Deno 单进程服务**。
 
-## Adding components
+## 架构
 
-To add components to your app, run the following command at the root of your `web` app:
+- `apps/web/`：写字板、上下文、统计、管理页面
+- `apps/server/`：LLM 引擎 + Hono HTTP API + 静态托管
+- `packages/ui/`：共享的 shadcn/ui 组件
+
+## 已移除
+
+- Rime / Lua 集成
+- Bearer key 验证
+- engine daemon / dashboard 分离架构
+- 旧版 `dkh-ui` 页面
+
+## 开发命令
+
+在 `llm-ime/` 根目录运行：
 
 ```bash
-pnpm dlx shadcn@latest add button -c apps/web
+pnpm install
+pnpm run server:cache
 ```
 
-This will place the ui components in the `packages/ui/src/components` directory.
+然后分别启动后端和前端：
 
-## Using components
+```bash
+pnpm run server
+pnpm run web:dev
+```
 
-To use the components in your app, import them from the `ui` package.
+默认地址：
 
-```tsx
-import { Button } from "@workspace/ui/components/button";
+- 前端开发页：`http://127.0.0.1:5173`
+- 统一服务：`http://127.0.0.1:5000`
+
+## 构建
+
+```bash
+pnpm run web:build
+pnpm run server:check
+```
+
+构建完成后，直接启动：
+
+```bash
+pnpm run server
+```
+
+服务会静态托管 `apps/web/dist`，并提供：
+
+- `GET /api/status`
+- `POST /api/candidates`
+- `POST /api/commit`
+- `GET /api/userdata`
+- `GET /api/inputlog`
+- `POST /api/learntext`
+
+## 模型路径
+
+默认读取：
+
+```text
+..\..\..\Qwen3-0.6B-GGUF\Qwen3-0.6B-IQ4_XS.gguf
+```
+
+也可以通过环境变量覆盖：
+
+```bash
+set LIME_MODEL_PATH=D:\path\to\model.gguf
+pnpm run server
 ```
