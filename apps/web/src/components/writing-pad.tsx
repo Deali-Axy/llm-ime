@@ -117,31 +117,27 @@ export function WritingPad() {
   )
 
   const finalizeDraft = useCallback(
-    async (suffix = "") => {
+    (suffix = "") => {
       const currentDraft = draftTextRef.current
 
-      try {
-        if (currentDraft) {
-          await api.commit({
-            text: currentDraft,
-            isNew: true,
-          })
-        }
+      // Update UI immediately — no await before state changes
+      setCommittedText((current) => `${current}${currentDraft}${suffix}`)
+      setDraftText("")
+      refreshCandidates("")
+      requestAnimationFrame(() => editorRef.current?.focus())
 
-        setCommittedText((current) => `${current}${currentDraft}${suffix}`)
-        setDraftText("")
-        refreshCandidates("")
-      } catch (commitError) {
-        setError(getErrorMessage(commitError))
-      } finally {
-        requestAnimationFrame(() => editorRef.current?.focus())
+      // Fire-and-forget: commit runs in background, errors shown non-blocking
+      if (currentDraft) {
+        void api.commit({ text: currentDraft, isNew: true }).catch((err) =>
+          setError(getErrorMessage(err))
+        )
       }
     },
-    [refreshCandidates]
+    [refreshCandidates],
   )
 
   const selectCandidate = useCallback(
-    async (index: number) => {
+    (index: number) => {
       const candidate = candidates[index]
 
       if (!candidate) {
@@ -149,35 +145,28 @@ export function WritingPad() {
       }
 
       const nextDraft = `${draftTextRef.current}${candidate.word}`
-      setDraftText(nextDraft)
 
-      try {
-        if (candidate.remainkeys.length > 0) {
-          await api.commit({
-            text: nextDraft,
-            isNew: false,
-          })
-
-          const nextKeys = composingKeysRef.current.slice(candidate.consumedkeys)
-          refreshCandidates(nextKeys)
-          return
-        }
-
-        await api.commit({
-          text: nextDraft,
-          isNew: true,
-        })
-
+      if (candidate.remainkeys.length > 0) {
+        // More keys remaining — update UI immediately, commit in background
+        setDraftText(nextDraft)
+        const nextKeys = composingKeysRef.current.slice(candidate.consumedkeys)
+        refreshCandidates(nextKeys)
+        void api.commit({ text: nextDraft, isNew: false }).catch((err) =>
+          setError(getErrorMessage(err))
+        )
+      } else {
+        // Full word committed — update UI immediately, commit in background
         setCommittedText((current) => `${current}${nextDraft}`)
         setDraftText("")
         refreshCandidates("")
-      } catch (commitError) {
-        setError(getErrorMessage(commitError))
-      } finally {
-        requestAnimationFrame(() => editorRef.current?.focus())
+        void api.commit({ text: nextDraft, isNew: true }).catch((err) =>
+          setError(getErrorMessage(err))
+        )
       }
+
+      requestAnimationFrame(() => editorRef.current?.focus())
     },
-    [candidates, refreshCandidates]
+    [candidates, refreshCandidates],
   )
 
   const clearComposition = useCallback(() => {
@@ -285,7 +274,7 @@ export function WritingPad() {
 
       if (key === "Enter") {
         if (isComposing) {
-          void finalizeDraft("\n")
+          finalizeDraft("\n")
           return
         }
 
@@ -294,7 +283,7 @@ export function WritingPad() {
       }
 
       if (key === " " && visibleCandidates.length > 0) {
-        void selectCandidate(pageIndex * PAGE_SIZE)
+        selectCandidate(pageIndex * PAGE_SIZE)
         return
       }
 
@@ -310,7 +299,7 @@ export function WritingPad() {
 
       if (key >= "1" && key <= "5") {
         const offset = Number(key) - 1
-        void selectCandidate(pageIndex * PAGE_SIZE + offset)
+        selectCandidate(pageIndex * PAGE_SIZE + offset)
         return
       }
 
@@ -426,7 +415,7 @@ export function WritingPad() {
                     key={`${candidate.word}-${displayIndex}`}
                     variant="outline"
                     className="h-auto justify-between gap-3 px-3 py-3 text-left"
-                    onClick={() => void selectCandidate(displayIndex)}
+                    onClick={() => selectCandidate(displayIndex)}
                   >
                     <span className="min-w-0 flex-1 truncate">
                       {index + 1}. {candidate.word}
