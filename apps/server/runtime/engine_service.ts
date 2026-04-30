@@ -117,6 +117,15 @@ export class EngineService {
 		}
 	}
 
+	private resetTransientInputState() {
+		this.inputLog.lastKeyTime = null;
+		this.inputLog.lastZiTime = null;
+		this.inputLog.lastCandidates = {
+			time: 0,
+			candidates: [],
+		};
+	}
+
 	async candidates(keys: string): Promise<Result> {
 		const requestId = ++this.latestCandidateRequestId;
 		return this.queue.run(async () => {
@@ -221,6 +230,39 @@ export class EngineService {
 			await this.config.runner.commit(text, true, true);
 			return {
 				message: "文本提交成功",
+			};
+		});
+	}
+
+	async resetContext() {
+		this.latestCandidateRequestId++;
+		return this.queue.run(async () => {
+			this.resetTransientInputState();
+			await this.config.runner.reset_context();
+			await this.config.runner.waitForIdle();
+			return {
+				message: "上下文已重置",
+			};
+		});
+	}
+
+	async restoreHistory(history: CommitRequest[]) {
+		this.latestCandidateRequestId++;
+		return this.queue.run(async () => {
+			this.resetTransientInputState();
+			await this.config.runner.reset_context();
+			for (const item of history) {
+				const text = item.text || "";
+				if (!text) continue;
+				await this.config.runner.commit(
+					text,
+					item.update ?? false,
+					item.new ?? true,
+				);
+			}
+			await this.config.runner.waitForIdle();
+			return {
+				message: "上下文已恢复",
 			};
 		});
 	}

@@ -304,6 +304,10 @@ export class LIME {
 		await this.init_ctx();
 	};
 
+	waitForIdle = async () => {
+		await this.modelEvalLock.acquire();
+	};
+
 	getEvalResult = async () => {
 		await this.modelEvalLock.acquire();
 		return this.last_result;

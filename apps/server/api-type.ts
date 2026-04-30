@@ -11,6 +11,8 @@ import type {
 	CandidatesResult,
 	CommitResponse,
 	EngineStatus,
+	ImeHealth,
+	ImeSessionResponse,
 	InputLog,
 	LearnTextResponse,
 	UserData,
@@ -21,16 +23,31 @@ export type {
 	CandidatesResult,
 	CommitResponse,
 	EngineStatus,
+	ImeHealth,
+	ImeSessionResponse,
 	InputLog,
 	LearnTextResponse,
 	UserData,
 } from "./runtime/types.ts";
 
 const candidatesSchema = z.object({ keys: z.string() });
+const imeCandidatesSchema = z.object({
+	sessionId: z.string().min(1),
+	keys: z.string(),
+});
 const commitSchema = z.object({
 	text: z.string(),
 	new: z.boolean().optional(),
 	update: z.boolean().optional(),
+});
+const imeCommitSchema = commitSchema.extend({
+	sessionId: z.string().min(1),
+});
+const imeSessionSchema = z.object({
+	sessionId: z.string().min(1).optional(),
+});
+const imeResetSchema = z.object({
+	sessionId: z.string().min(1),
 });
 const learnTextSchema = z.object({ text: z.string() });
 
@@ -52,6 +69,27 @@ const api = new Hono()
 		"/api/learntext",
 		zValidator("json", learnTextSchema),
 		(c) => c.json({} as LearnTextResponse),
-	);
+	)
+	.post(
+		"/api/ime/session",
+		zValidator("json", imeSessionSchema),
+		(c) => c.json({} as ImeSessionResponse),
+	)
+	.post(
+		"/api/ime/candidates",
+		zValidator("json", imeCandidatesSchema),
+		(c) => c.json({} as CandidatesResult),
+	)
+	.post(
+		"/api/ime/commit",
+		zValidator("json", imeCommitSchema),
+		(c) => c.json({} as CommitResponse),
+	)
+	.post(
+		"/api/ime/reset",
+		zValidator("json", imeResetSchema),
+		(c) => c.json({} as LearnTextResponse),
+	)
+	.get("/api/ime/health", (c) => c.json({} as ImeHealth));
 
 export type AppType = typeof api;

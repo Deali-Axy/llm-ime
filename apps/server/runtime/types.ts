@@ -45,3 +45,16 @@ export type CommitResponse = {
 export type LearnTextResponse = {
 	message: string;
 };
+
+export type ImeSessionResponse = {
+	sessionId: string;
+	created: boolean;
+	expiresAt: number | null;
+};
+
+export type ImeHealth = {
+	status: "ok";
+	activeSessionId: string | null;
+	sessionCount: number;
+	sessionTtlMs: number;
+};

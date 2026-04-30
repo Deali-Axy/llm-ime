@@ -8,6 +8,7 @@
     "lint": "turbo lint",
     "format": "turbo format",
     "model:download": "node scripts/download-model.mjs",
+    "rime:install": "powershell -ExecutionPolicy Bypass -File scripts/install-rime.ps1",
     "typecheck": "turbo typecheck",
     "web:dev": "pnpm --filter web dev",
     "web:build": "pnpm --filter web build",
