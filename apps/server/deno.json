@@ -1,0 +1,9 @@
+{
+  "nodeModulesDir": "auto",
+  "imports": {
+    "hono": "npm:hono@^4.11.1",
+    "hono/": "npm:/hono@^4.11.1/",
+    "node-llama-cpp": "npm:node-llama-cpp@^3.14.5",
+    "pinyin-pro": "npm:pinyin-pro@^3.27.0"
+  }
+}
