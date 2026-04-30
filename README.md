@@ -105,14 +105,26 @@ git clone https://www.modelscope.cn/unsloth/Qwen3-0.6B-GGUF.git
 
 ### 配置模型路径
 
-默认从与本仓库同级的 `Qwen3-0.6B-GGUF/` 目录中加载模型，如需使用其他路径，设置环境变量：
+默认从与本仓库同级的 `Qwen3-0.6B-GGUF/` 目录中加载模型，如需使用其他路径，在仓库根目录创建 `.env` 文件（复制 `.env.example` 修改即可）：
+
+```bash
+cp .env.example .env
+```
+
+`.env` 示例内容：
+
+```env
+LIME_MODEL_PATH=D:\models\Qwen3-0.6B-IQ4_XS.gguf
+```
+
+`.env` 文件已加入 `.gitignore`，不会被提交。也可以直接设置系统环境变量（优先级高于 `.env`）：
 
 ```bash
 # Windows
-$env:LIME_MODEL_PATH="D:\\Qwen3-0.6B-GGUF\\Qwen3-0.6B-IQ4_XS.gguf"
+set LIME_MODEL_PATH=D:\models\your-model.gguf
 
 # macOS / Linux
-export LIME_MODEL_PATH=/path/to/Qwen3-0.6B-IQ4_XS.gguf
+export LIME_MODEL_PATH=/path/to/your-model.gguf
 ```
 
 ## 开发模式
@@ -144,7 +156,9 @@ pnpm run server
 
 服务启动后，`http://127.0.0.1:5000` 同时提供 API 和前端页面。
 
-## 环境变量
+## 配置参考
+
+支持通过仓库根目录的 `.env` 文件或系统环境变量进行配置（系统环境变量优先级更高）：
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
