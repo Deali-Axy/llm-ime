@@ -2,6 +2,8 @@
 
 基于本地 GGUF 大语言模型的中文拼音输入法引擎，提供 Web Dashboard 用于打字练习、输入统计和引擎管理。
 
+![llm-ime 截图](docs/screenshot.webp)
+
 ## 项目结构
 
 pnpm monorepo，包含三个工作区：
@@ -195,4 +197,37 @@ pnpm run web:build
 2. 在 `apps/server/api-type.ts` 中添加虚拟路由（用于 RPC 类型推导）
 3. 在 `apps/server/main.ts` 中添加真实路由实现
 4. 前端 `apps/web/src/lib/api.ts` 中类型自动同步，只需添加调用方法
+
+## 贡献 & 交流
+
+欢迎一起改进这个项目！
+
+### 🐛 报告问题
+
+使用中遇到 Bug 或有功能建议？请[提交 Issue](https://github.com/Deali-Axy/llm-ime/issues/new)，描述清楚复现步骤和环境信息，我会尽快跟进。
+
+### 🔧 提交代码
+
+1. Fork 本仓库
+2. 创建你的功能分支：`git checkout -b feat/your-feature`
+3. 提交改动：`git commit -m 'feat: add some feature'`
+4. 推送分支：`git push origin feat/your-feature`
+5. 发起 Pull Request，描述你做了什么以及为什么
+
+> 提交前请确保 `pnpm run web:build` 和 `tsc --noEmit` 通过。
+
+### 💬 交流讨论
+
+有想法、问题或者只是想聊聊？欢迎通过以下方式联系：
+
+- **GitHub Discussions**：[发起讨论](https://github.com/Deali-Axy/llm-ime/discussions)
+- **GitHub**：[@Deali-Axy](https://github.com/Deali-Axy)
+
+### ⭐ 支持项目
+
+如果这个项目对你有帮助，欢迎点个 Star，这是对我最大的鼓励 🙏
+
+---
+
+由 **[曦远 (DealiAxy)](https://github.com/Deali-Axy)** 用 ❤️ 构建
 
