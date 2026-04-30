@@ -23,5 +23,9 @@
   "packageManager": "pnpm@9.15.9",
   "engines": {
     "node": ">=20"
+  },
+  "author": {
+    "name": "曦远 (DealiAxy)",
+    "url": "https://github.com/Deali-Axy"
   }
 }
