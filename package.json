@@ -7,6 +7,7 @@
     "dev": "turbo dev",
     "lint": "turbo lint",
     "format": "turbo format",
+    "model:download": "node scripts/download-model.mjs",
     "typecheck": "turbo typecheck",
     "web:dev": "pnpm --filter web dev",
     "web:build": "pnpm --filter web build",

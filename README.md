@@ -95,13 +95,25 @@ pnpm install
     └── Qwen3-0.6B-IQ4_XS.gguf
 ```
 
-可通过 git clone 下载完整模型仓库（注意：完整仓库约 20+ GB）：
+推荐直接运行仓库内置脚本，只下载本项目需要的单个模型文件（约 350 MB）：
 
 ```bash
-git clone https://www.modelscope.cn/unsloth/Qwen3-0.6B-GGUF.git
+pnpm run model:download
 ```
 
-本项目只需要其中的 `Qwen3-0.6B-IQ4_XS.gguf` 文件（约 350 MB），也可以只单独下载该文件，然后通过环境变量指定路径（见下方）。
+该命令会直接从 ModelScope 仓库 `https://www.modelscope.cn/unsloth/Qwen3-0.6B-GGUF.git` 下载 `Qwen3-0.6B-IQ4_XS.gguf`，并保存到与本仓库同级的 `Qwen3-0.6B-GGUF/` 目录中，不会下载完整的 20+ GB 模型仓库。
+
+如需自定义保存路径：
+
+```bash
+pnpm run model:download -- /path/to/Qwen3-0.6B-IQ4_XS.gguf
+```
+
+如不想使用脚本，也可以直接下载单文件：
+
+```bash
+curl -L "https://www.modelscope.cn/api/v1/models/unsloth/Qwen3-0.6B-GGUF/repo?Revision=master&FilePath=Qwen3-0.6B-IQ4_XS.gguf" -o Qwen3-0.6B-IQ4_XS.gguf
+```
 
 ### 配置模型路径
 
